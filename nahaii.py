@@ -5,8 +5,6 @@ import time
 import json
 import urllib.request
 import urllib.error
-import re
-import os
 from base64 import b64encode
 from babase import Plugin
 from bauiv1 import (
@@ -37,7 +35,7 @@ class SubscriptionManager:
     WORKER_URL = "https://square-cherry-6ae3.hamid1384rty.workers.dev/api/public/subs"
     CACHE_KEY = "scmd_sub_cache"
     CACHE_TIME_KEY = "scmd_sub_cache_time"
-    CACHE_DURATION = 12 * 60 * 60  # ۱۲ ساعت
+    CACHE_DURATION = 12 * 60 * 60  # 12 ساعت
 
     @staticmethod
     def _fetch_from_server():
@@ -145,148 +143,6 @@ class SubscriptionManager:
         """اجبار به آپدیت کش"""
         var(SubscriptionManager.CACHE_TIME_KEY, 0)
         return SubscriptionManager._fetch_from_server() is not None
-
-# ============================================
-# کلاس مدیریت حافظه محلی چت
-# ============================================
-class ChatMemory:
-    MEMORY_FILE = "scmd_chat_memory.json"
-    MEMORY_DURATION = 60  # ۶۰ ثانیه نگهداری
-    
-    @staticmethod
-    def _get_memory_path():
-        """دریافت مسیر فایل حافظه"""
-        try:
-            from babase import app
-            config_dir = app.config_file_path.replace('bombsquad_config.json', '')
-            memory_path = os.path.join(config_dir, ChatMemory.MEMORY_FILE)
-            return memory_path
-        except:
-            return ChatMemory.MEMORY_FILE
-    
-    @staticmethod
-    def load_memory():
-        """بارگذاری حافظه از فایل"""
-        try:
-            memory_path = ChatMemory._get_memory_path()
-            if os.path.exists(memory_path):
-                with open(memory_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return {}
-        except Exception as e:
-            print(f"Error loading chat memory: {e}")
-            return {}
-    
-    @staticmethod
-    def save_memory(memory):
-        """ذخیره حافظه در فایل"""
-        try:
-            memory_path = ChatMemory._get_memory_path()
-            with open(memory_path, 'w', encoding='utf-8') as f:
-                json.dump(memory, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            print(f"Error saving chat memory: {e}")
-            return False
-    
-    @staticmethod
-    def add_message(sender, content):
-        """اضافه کردن پیام به حافظه با timestamp"""
-        memory = ChatMemory.load_memory()
-        
-        if sender not in memory:
-            memory[sender] = []
-        
-        # زمان فعلی با دقت ۰.۵ ثانیه
-        current_time = int(time.time() * 2) / 2
-        
-        # بررسی اینکه آیا دقیقاً همین پیام با همین timestamp قبلاً ثبت شده
-        for msg in memory[sender]:
-            if msg.get('content') == content and abs(msg.get('timestamp', 0) - current_time) < 0.1:
-                return True  # قبلاً ثبت شده
-        
-        # اضافه کردن پیام جدید
-        memory[sender].append({
-            'content': content,
-            'timestamp': current_time,
-            'processed': False
-        })
-        
-        # محدود کردن تاریخچه هر کاربر به ۵۰ پیام
-        if len(memory[sender]) > 50:
-            memory[sender] = memory[sender][-40:]
-        
-        ChatMemory.save_memory(memory)
-        return True
-    
-    @staticmethod
-    def is_processed(sender, content, current_time):
-        """بررسی اینکه آیا پیام قبلاً پردازش شده"""
-        memory = ChatMemory.load_memory()
-        
-        if sender not in memory:
-            return False
-        
-        rounded_time = int(current_time * 2) / 2
-        
-        # بررسی ۲۰ پیام آخر این کاربر
-        for msg in memory[sender][-20:]:
-            if msg.get('content') == content:
-                # اگر پیام پردازش شده باشه
-                if msg.get('processed', False):
-                    # اگر زمانش با زمان فعلی خیلی نزدیکه (کمتر از ۰.۵ ثانیه)
-                    if abs(msg.get('timestamp', 0) - rounded_time) < 0.5:
-                        return True
-                # اگر پیام پردازش نشده ولی زمانش خیلی نزدیکه (در حال پردازش)
-                elif abs(msg.get('timestamp', 0) - rounded_time) < 0.1:
-                    return True
-        
-        return False
-    
-    @staticmethod
-    def mark_processed(sender, content, timestamp):
-        """علامت‌گذاری پیام به عنوان پردازش شده"""
-        memory = ChatMemory.load_memory()
-        
-        if sender not in memory:
-            return False
-        
-        rounded_time = int(timestamp * 2) / 2
-        
-        # پیدا کردن و علامت‌گذاری
-        for msg in memory[sender]:
-            if msg.get('content') == content and abs(msg.get('timestamp', 0) - rounded_time) < 0.1:
-                msg['processed'] = True
-                ChatMemory.save_memory(memory)
-                print(f"✅ Marked as processed: {content} at {rounded_time}")
-                return True
-        
-        return False
-    
-    @staticmethod
-    def clean_old_memory():
-        """پاک کردن حافظه قدیمی (بیش از ۶۰ ثانیه)"""
-        memory = ChatMemory.load_memory()
-        current_time = int(time.time() * 2) / 2
-        changed = False
-        
-        for sender in list(memory.keys()):
-            old_messages = []
-            for msg in memory[sender]:
-                if current_time - msg.get('timestamp', 0) > ChatMemory.MEMORY_DURATION:
-                    old_messages.append(msg)
-            
-            for old_msg in old_messages:
-                memory[sender].remove(old_msg)
-                changed = True
-            
-            if not memory[sender]:
-                del memory[sender]
-                changed = True
-        
-        if changed:
-            ChatMemory.save_memory(memory)
-            print("🗑️ Cleaned old chat memory")
 
 # ============================================
 # کلاس پنل اشتراک (فقط یک اشتراک خاص با کلمه کلیدی)
@@ -2319,7 +2175,8 @@ class SC:
             size=(scroll_width, scroll_height),
             position=(10, 50),
             color=(0.1, 0.1, 0.1),
-            highlight=False        )
+            highlight=False
+        )
         column = clw(
             parent=scroll,
             left_border=0,
@@ -2529,25 +2386,13 @@ class SinglCMD(Plugin):
         party.PartyWindow.__init__ = e
         
         s.z = []
-        s.ignore_messages = []
-        s._last_sender = None
-        
-        # پاکسازی حافظه در شروع
-        ChatMemory.clean_old_memory()
-        
+        s.ignore_messages = [] 
         teck(5, CallStrict(s.ear))
         teck(1, CallStrict(s.update_owner_id_loop))
-        # پاکسازی دوره‌ای حافظه هر ۳۰ ثانیه
-        teck(30, CallStrict(s._clean_memory_loop))
     
     def update_owner_id_loop(s):
         update_owner_client_id()
         teck(1, CallStrict(s.update_owner_id_loop))
-    
-    def _clean_memory_loop(s):
-        """پاکسازی دوره‌ای حافظه"""
-        ChatMemory.clean_old_memory()
-        teck(30, CallStrict(s._clean_memory_loop))
     
     def safe_send_message(s, message, sender_name):
         s.ignore_messages.append(message)
@@ -2556,283 +2401,161 @@ class SinglCMD(Plugin):
         CM(message)
         print(f"SinglCMD: Sent message (added to ignore list): {message}")
     
-    def _extract_code_and_target(self, message, cmds_dict):
-        """استخراج کد و target_id از پیام با پشتیبانی از تمام فرمت‌ها"""
-        m_lower = message.lower().strip()
-        
-        if not m_lower.startswith('%'):
-            return None, None
-        
-        without_percent = m_lower[1:].strip()
-        if not without_percent:
-            return None, None
-        
-        code = None
-        target_id = None
-        
-        # روش ۱: با فاصله (مثلاً %kick 129)
-        parts = without_percent.split()
-        if len(parts) >= 2:
-            code = parts[0].strip()
-            target_id = parts[1].strip()
-            return code, target_id
-        
-        # روش ۲: بدون فاصله (مثلاً %kick129)
-        # مرتب‌سازی کدها بر اساس طول (بلندتر اول) برای تشخیص بهتر
-        sorted_codes = sorted(cmds_dict.keys(), key=len, reverse=True)
-        for cmd_code in sorted_codes:
-            if without_percent.startswith(cmd_code):
-                code = cmd_code
-                remaining = without_percent[len(cmd_code):].strip()
-                if remaining:
-                    target_id = remaining
-                else:
-                    target_id = ''
-                return code, target_id
-        
-        # روش ۳: اگر دقیقاً با یک کد برابر بود
-        if without_percent in cmds_dict:
-            code = without_percent
-            target_id = ''
-            return code, target_id
-        
-        return code, target_id
-    
-    def _clean_target_id(self, target_id):
-        """پاکسازی target_id و استخراج فقط اعداد"""
-        if not target_id:
-            return ''
-        
-        # حذف فضاهای اضافی
-        target_id = target_id.strip()
-        
-        # استخراج فقط اعداد با regex
-        numbers = re.findall(r'\d+', target_id)
-        if numbers:
-            return numbers[0]  # اولین عدد پیدا شده
-        
-        return target_id
-    
-    def _process_anti_code(s, message, sender):
-        """پردازش آنتی‌کد با حافظه محلی - فقط پیام دریافتی رو بررسی کن"""
-        anti_enabled = var('anti_enabled')
-        if anti_enabled is None:
-            anti_enabled = True
-        
-        if not anti_enabled:
-            return False
-        
-        anti_cmds = var('anti_cmds') or {}
-        if not anti_cmds:
-            return False
-        
-        owner_client_id = var('owner_client_id')
-        if not owner_client_id or owner_client_id == 'Not set':
-            return False
-        
-        # ===== بررسی خود پیام دریافتی =====
-        if not message.startswith('%'):
-            return False
-        
-        # زمان فعلی با دقت ۰.۵ ثانیه
-        current_time = time.time()
-        
-        # ===== اضافه کردن پیام به حافظه =====
-        ChatMemory.add_message(sender, message)
-        
-        # ===== بررسی اینکه آیا قبلاً پردازش شده =====
-        if ChatMemory.is_processed(sender, message, current_time):
-            print(f"⏭️ Already processed (memory): {message}")
-            return False
-        
-        # ===== استخراج کد و target_id =====
-        code, target_id = s._extract_code_and_target(message, anti_cmds)
-        
-        if not code or code not in anti_cmds:
-            return False
-        
-        # پاکسازی target_id
-        if target_id:
-            target_id = s._clean_target_id(target_id)
-        
-        if not target_id:
-            target_id = str(owner_client_id)
-        
-        # بررسی تطابق
-        if str(target_id) != str(owner_client_id):
-            return False
-        
-        # ===== پردازش و پاسخ =====
-        data = anti_cmds[code]
-        out = data['out']
-        delay = data.get('delay', 0)
-        response = f'%{out} {target_id}'
-        
-        # ===== علامت‌گذاری به عنوان پردازش شده =====
-        ChatMemory.mark_processed(sender, message, current_time)
-        
-        print(f"✅ Anti-code triggered: {sender} -> {code} -> {response}")
-        
-        if delay > 0:
-            def send_delayed():
-                s.safe_send_message(response, sender)
-                push(f'🛡️ Anti code triggered for {sender}: {response}', color=(1, 0.5, 0.5))
-            teck(delay, CallStrict(send_delayed))
-        else:
-            s.safe_send_message(response, sender)
-            push(f'🛡️ Anti code triggered for {sender}: {response}', color=(1, 0.5, 0.5))
-        
-        return True
-    
-    def _process_regular_commands(s, message, sender):
-        """پردازش کدهای معمولی - فقط برای مالک"""
-        # فقط مالک می‌تواند از کدهای معمولی استفاده کند
-        if not s._check_if_owner(sender):
-            return False
-        
-        cmds = var('cmds') or {}
-        if not cmds:
-            return False
-        
-        m_lower = message.lower().strip()
-        
-        # بررسی کدهای معمولی
-        for inp_key, data in cmds.items():
-            out = data['out']
-            delay = data.get('delay', 0)
-            if m_lower.startswith(inp_key + ' '):
-                rest = m_lower[len(inp_key)+1:].strip()
-                if len(rest) == 1 and rest.isdigit() and 0 <= int(rest) <= 9:
-                    response = f'{out} {rest}'
-                    if delay > 0:
-                        def send_delayed():
-                            s.safe_send_message(response, sender)
-                            push(f'Responded to {sender}: {response}', color=(0,1,1))
-                        teck(delay, CallStrict(send_delayed))
-                    else:
-                        s.safe_send_message(response, sender)
-                        push(f'Responded to {sender}: {response}', color=(0,1,1))
-                    return True
-        
-        # بررسی کدهای با فرمت %
-        code, target_id = s._extract_code_and_target(message, cmds)
-        if code and target_id and code in cmds:
-            data = cmds[code]
-            out = data['out']
-            delay = data.get('delay', 0)
-            response = f'%{out} {target_id}'
-            
-            if delay > 0:
-                def send_delayed():
-                    s.safe_send_message(response, sender)
-                    push(f'Responded to {sender}: {response}', color=(0,1,1))
-                teck(delay, CallStrict(send_delayed))
-            else:
-                s.safe_send_message(response, sender)
-                push(f'Responded to {sender}: {response}', color=(0,1,1))
-            return True
-        
-        return False
-    
     def ear(s):
         z = GCM()
         teck(0.3, CallStrict(s.ear))
-        
-        if z == s.z: 
-            return
+        if z == s.z: return
         s.z = z
         
-        if not z: 
-            return
+        if not z: return
         
-        v = z[-1]
-        parts = v.split(': ', 1)
-        if len(parts) < 2: 
-            return
+        # ===== تغییر اصلی: بررسی ۴ پیام آخر به جای فقط آخرین =====
+        # گرفتن ۴ پیام آخر (یا هر تعداد که موجود است)
+        last_messages = z[-4:] if len(z) >= 4 else z
         
-        sender, message = parts
-        sender = sender.strip()
-        message = message.strip()
-        
-        if message in s.ignore_messages:
-            try:
-                s.ignore_messages.remove(message)
-            except:
-                pass
-            print(f"SinglCMD: Ignoring self-sent message: {message}")
-            return
-        
-        # ===== اول آنتی‌کد رو بررسی کن (برای همه کاربران) =====
-        anti_handled = s._process_anti_code(message, sender)
-        if anti_handled:
-            return  # اگر آنتی‌کد اجرا شد، دیگه ادامه نده
-        
-        # ===== بررسی اشتراک اختصاصی با کلمه کلیدی =====
-        current_sub = var('current_subscription')
-        
-        # اگر اشتراکی انتخاب نشده باشد، هیچ کاری انجام نده
-        if not current_sub or current_sub == 'None':
-            # فقط برای مالک پیام نمایش بده
-            if s._check_if_owner(sender):
-                push('⛔ ابتدا یک اشتراک را در پنل Subscription فعال کنید!', color=(1, 0.5, 0))
-            return
-        
-        # بررسی اعتبار اشتراک
-        if not SubscriptionManager.check_subscription(current_sub):
-            if s._check_if_owner(sender):
-                remaining = SubscriptionManager.get_remaining_days(current_sub)
-                push(f'⛔ اشتراک "{current_sub}" منقضی شده است! (روز باقی‌مانده: {remaining})', color=(1, 0.5, 0))
-            return  # اگر اشتراک معتبر نباشد، هیچ کاری انجام نده
-        
-        # ===== پردازش کدهای معمولی (فقط برای مالک) =====
-        s._process_regular_commands(message, sender)
+        for msg in reversed(last_messages):
+            parts = msg.split(': ', 1)
+            if len(parts) < 2: continue
+            
+            sender, message = parts
+            sender = sender.strip()
+            message = message.strip()
+            
+            if message in s.ignore_messages:
+                try:
+                    s.ignore_messages.remove(message)
+                except:
+                    pass
+                print(f"SinglCMD: Ignoring self-sent message: {message}")
+                continue
+            
+            # بررسی اینکه آیا پیام از طرف OWNER است یا نه
+            is_owner = s._check_if_owner(sender)
+            
+            # ===== بررسی اشتراک اختصاصی با کلمه کلیدی =====
+            current_sub = var('current_subscription')
+            
+            # اگر اشتراکی انتخاب نشده باشد، هیچ کاری انجام نده
+            if not current_sub or current_sub == 'None':
+                if is_owner:
+                    push('⛔ ابتدا یک اشتراک را در پنل Subscription فعال کنید!', color=(1, 0.5, 0))
+                continue
+            
+            # بررسی اعتبار اشتراک
+            if not SubscriptionManager.check_subscription(current_sub):
+                if is_owner:
+                    remaining = SubscriptionManager.get_remaining_days(current_sub)
+                    push(f'⛔ اشتراک "{current_sub}" منقضی شده است! (روز باقی‌مانده: {remaining})', color=(1, 0.5, 0))
+                continue  # اگر اشتراک معتبر نباشد، هیچ کاری انجام نده
+            
+            # --- بخش آنتی‌کد (فقط برای کسانی که OWNER نیستند) ---
+            anti_enabled = var('anti_enabled')
+            if anti_enabled is None:
+                anti_enabled = True
+            
+            if anti_enabled and not is_owner:
+                anti_cmds = var('anti_cmds') or {}
+                owner_client_id = var('owner_client_id')
+                
+                if anti_cmds and owner_client_id and owner_client_id != 'Not set':
+                    m_lower = message.lower().strip()
+                    if m_lower.startswith('%'):
+                        without_percent = m_lower[1:].strip()
+                        parts_msg = without_percent.split()
+                        
+                        if len(parts_msg) >= 2:
+                            code = parts_msg[0].strip()
+                            target_id = parts_msg[1].strip()
+                        else:
+                            code = ''
+                            target_id = ''
+                            for anti_code in anti_cmds.keys():
+                                if without_percent.startswith(anti_code):
+                                    code = anti_code
+                                    target_id = without_percent[len(anti_code):].strip()
+                                    break
+                        
+                        if code and target_id and code in anti_cmds and str(target_id) == str(owner_client_id):
+                            data = anti_cmds[code]
+                            out = data['out']
+                            delay = data.get('delay', 0)
+                            response = f'%{out} {target_id}'
+                            
+                            if delay > 0:
+                                def send_delayed():
+                                    s.safe_send_message(response, sender)
+                                    push(f'🛡️ Anti code triggered for {sender}: {response}', color=(1, 0.5, 0.5))
+                                teck(delay, CallStrict(send_delayed))
+                            else:
+                                s.safe_send_message(response, sender)
+                                push(f'🛡️ Anti code triggered for {sender}: {response}', color=(1, 0.5, 0.5))
+                            continue
+            
+            # --- بخش کدهای معمولی (فقط OWNER می‌تواند استفاده کند) ---
+            if not is_owner:
+                continue
+            
+            cmds = var('cmds') or {}
+            if cmds:
+                m_lower = message.lower().strip()
+                for inp_key, data in cmds.items():
+                    out = data['out']
+                    delay = data.get('delay', 0)
+                    if m_lower.startswith(inp_key + ' '):
+                        rest = m_lower[len(inp_key)+1:].strip()
+                        if len(rest) == 1 and rest.isdigit() and 0 <= int(rest) <= 9:
+                            response = f'{out} {rest}'
+                            if delay > 0:
+                                def send_delayed():
+                                    s.safe_send_message(response, sender)
+                                    push(f'Responded to {sender}: {response}', color=(0,1,1))
+                                teck(delay, CallStrict(send_delayed))
+                            else:
+                                s.safe_send_message(response, sender)
+                                push(f'Responded to {sender}: {response}', color=(0,1,1))
+                            break
+                if m_lower.startswith('%'):
+                    without_percent = m_lower[1:].strip()
+                    parts_msg = without_percent.split()
+                    
+                    if len(parts_msg) >= 2:
+                        code = parts_msg[0].strip()
+                        target_id = parts_msg[1].strip()
+                    else:
+                        code = ''
+                        target_id = ''
+                        for cmd_code in cmds.keys():
+                            if without_percent.startswith(cmd_code):
+                                code = cmd_code
+                                target_id = without_percent[len(cmd_code):].strip()
+                                break
+                    if code and target_id and code in cmds:
+                        data = cmds[code]
+                        out = data['out']
+                        delay = data.get('delay', 0)
+                        response = f'%{out} {target_id}'
+                        
+                        if delay > 0:
+                            def send_delayed():
+                                s.safe_send_message(response, sender)
+                                push(f'Responded to {sender}: {response}', color=(0,1,1))
+                            teck(delay, CallStrict(send_delayed))
+                        else:
+                            s.safe_send_message(response, sender)
+                            push(f'Responded to {sender}: {response}', color=(0,1,1))
+                        break
     
     def _check_if_owner(s, sender):
-        """بررسی می‌کند که آیا فرستنده پیام OWNER است یا خیر - بهبود یافته با لاگ"""
+        """بررسی می‌کند که آیا فرستنده پیام OWNER است یا خیر"""
         owner_account = var('owner_account')
         owner_nickname = var('owner_nickname')
-        owner_client_id = var('owner_client_id')
         
-        # اگر هیچ مالکی تنظیم نشده، همه غیرمالک هستند
-        if not owner_account and not owner_nickname and (not owner_client_id or owner_client_id == 'Not set'):
-            print(f"🔍 No owner set, {sender} is not owner")
+        if not owner_account and not owner_nickname:
             return False
         
-        print(f"🔍 Checking if {sender} is owner: account={owner_account}, nickname={owner_nickname}, client_id={owner_client_id}")
-        
-        # روش ۱: بررسی با شناسه کلاینت (دقیق‌ترین روش)
-        if owner_client_id and owner_client_id != 'Not set':
-            try:
-                roster = get_game_roster()
-                for client in roster:
-                    if 'players' in client and client['players']:
-                        for p in client['players']:
-                            if p.get('name', '') == sender:
-                                client_id = str(client.get('client_id'))
-                                print(f"🔍 Found player: {sender} with client_id={client_id}, owner_client_id={owner_client_id}")
-                                if client_id == str(owner_client_id):
-                                    print(f"✅ {sender} is owner (client_id match)")
-                                    return True
-            except Exception as e:
-                print(f"Error in owner check method 1: {e}")
-        
-        # روش ۲: بررسی با نام نمایشی (فقط اگر با اکانت تطابق داشته باشه)
         if owner_nickname and sender == owner_nickname:
-            # بررسی کن که این نام واقعاً به مالک تعلق داره
-            try:
-                roster = get_game_roster()
-                for client in roster:
-                    if 'players' in client and client['players']:
-                        for p in client['players']:
-                            if p.get('name', '') == sender:
-                                device_name = client.get('display_string', '')
-                                if owner_account and owner_account.lower() in device_name.lower():
-                                    print(f"✅ {sender} is owner (nickname + account match)")
-                                    return True
-            except Exception as e:
-                print(f"Error in owner check method 2: {e}")
+            return True
         
-        # روش ۳: بررسی با اکانت (از طریق device_name)
         if owner_account:
             try:
                 roster = get_game_roster()
@@ -2841,15 +2564,11 @@ class SinglCMD(Plugin):
                         for p in client['players']:
                             if p.get('name', '') == sender:
                                 device_name = client.get('display_string', '')
-                                print(f"🔍 Checking device: {device_name} for account: {owner_account}")
                                 if owner_account.lower() in device_name.lower():
-                                    # اگر owner_nickname تنظیم نشده، آن را تنظیم کن
                                     if not owner_nickname:
                                         var('owner_nickname', sender)
-                                    print(f"✅ {sender} is owner (account match)")
                                     return True
-            except Exception as e:
-                print(f"Error in owner check method 3: {e}")
+            except:
+                pass
         
-        print(f"❌ {sender} is NOT owner")
         return False
